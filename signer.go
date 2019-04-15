@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"time"
 )
 
 var md5Quote = 1
@@ -37,8 +36,6 @@ type chPack struct {
 
 type chSlice []chPack
 
-// var chans [5]chan interface{}
-
 func chanMaker(n int) (list chSlice) {
 	for i := 0; i < n; i++ {
 		var tmp chPack
@@ -53,18 +50,23 @@ func chanMaker(n int) (list chSlice) {
 func ExecutePipeline(jobs ...job) {
 	var wg sync.WaitGroup
 	chans := chanMaker(len(jobs))
-	// wg.Add(len(jobs))
 	counter := 0
+
+	for i, jb := range jobs {
+		if i != len(jobs)-1 {
+			go jb(chans[i].jobIn, chans[i].out)
+		}
+	}
 
 	for i, jb := range jobs {
 		i := i
 
 		if i == 0 {
 			wg.Add(1)
-			// fmt.Printf("%v Iteration\n", i)
 
 			go func(in, out chan interface{}, wg *sync.WaitGroup) {
 				defer wg.Done()
+
 				for {
 					select {
 					case data := <-out:
@@ -78,14 +80,10 @@ func ExecutePipeline(jobs ...job) {
 					}
 				}
 			}(chans[i].in, chans[i].out, &wg)
-
-			jb(chans[i].in, chans[i].out)
 		}
 
 		if i != 0 && i != len(jobs)-1 {
 			wg.Add(1)
-			// fmt.Printf("%v Iteration\n", i)
-			go jb(chans[i].jobIn, chans[i].out)
 
 			go func(jobIn, in, out chan interface{}, wg *sync.WaitGroup) {
 				defer wg.Done()
@@ -113,8 +111,6 @@ func ExecutePipeline(jobs ...job) {
 
 		if i == len(jobs)-1 {
 			wg.Add(1)
-			// fmt.Printf("%v Iteration\n", i)
-			go jb(chans[i].jobIn, chans[i].out)
 
 			go func(jobIn, in, out chan interface{}, wg *sync.WaitGroup) {
 				defer wg.Done()
@@ -128,131 +124,17 @@ func ExecutePipeline(jobs ...job) {
 					if cnt == counter {
 						close(jobIn)
 						fmt.Println("Worker Last: Ended")
-						time.Sleep(time.Millisecond * 10)
 						return
 					}
 				}
 			}(chans[i].jobIn, chans[i].in, chans[i].out, &wg)
+
+			jb(chans[i].jobIn, chans[i].out)
 		}
 	}
 
 	wg.Wait()
 }
-
-// func ExecutePipeline(jobs ...job) {
-// 	var wg sync.WaitGroup
-// 	chans := chanMaker(len(jobs))
-// 	wg.Add(len(jobs))
-// 	fmt.Println("chans", chans)
-
-// 	for i, jb := range jobs {
-// 		i := i
-// 		go jb(chans[i].in, chans[i].out)
-// 		// time.Sleep(10 * time.Millisecond)
-
-// 		go func(jb job, in chan interface{}, out chan interface{}, wg *sync.WaitGroup) {
-// 			defer wg.Done()
-// 			if i == len(jobs)-1 {
-// 			LOOP:
-// 				for {
-// 					// time.Sleep(10 * time.Millisecond)
-
-// 					select {
-// 					case val, ok := <-out:
-// 						if !ok {
-// 							break LOOP
-// 						}
-// 						in <- val
-// 					default:
-// 						fmt.Println("select default", i)
-// 						break LOOP
-// 					}
-// 				}
-// 			} else {
-// 			LOOP2:
-// 				for {
-// 					time.Sleep(10 * time.Millisecond)
-
-// 					select {
-// 					case val, ok := <-out:
-// 						if !ok {
-// 							break LOOP2
-// 						}
-// 						chans[i+1].in <- val
-
-// 					default:
-// 						fmt.Println("select default", i)
-// 						break LOOP2
-// 					}
-// 				}
-// 			}
-
-// 			// for d := range out {
-
-// 			// 	chans[i+1].in <- d
-// 			// 	fmt.Println("Sent", i)
-
-// 			// }
-
-// 			fmt.Println("Out Closed")
-// 			close(in)
-// 			close(out)
-// 			return
-// 		}(jb, chans[i].in, chans[i].out, &wg)
-
-// 	}
-
-// 	wg.Wait()
-// }
-
-// func worker(jb job, done, in, out chan interface{}) {
-// 	jb(in, out)
-
-// 	for n := range out {
-// 		fmt.Println("слушаем out", n)
-// 	}
-// }
-
-// func worker(jb job, in, out chan interface{}, wg sync.WaitGroup, i int) {
-// 	defer wg.Done()
-// 	ch := make(chan interface{}, 1)
-// 	fmt.Printf("Worker %v Started\n", i)
-// 	go jb(ch, out)
-// 	for {
-// 		select {
-// 		case data := <-out:
-// 			fmt.Println("Data in chan!")
-// 			ch <- data
-// 		case <-time.After(time.Second * 3):
-// 			fmt.Printf("Worker %v timeout\n", i)
-// 			close(in)
-// 			close(ch)
-// 			return
-// 		}
-// 	}
-// }
-
-// func ExecutePipeline(jobs ...job) {
-// 	type chanSlice []chan interface{}
-// 	var wg sync.WaitGroup
-// 	channels := make(chanSlice, len(jobs))
-// 	for i, job := range jobs {
-// 		fmt.Println("i", i, jobs, len(jobs))
-// 		channels[i] = make(chan interface{}, 1)
-// 		wg.Add(len(jobs))
-
-// 		if i == 0 {
-// 			go worker(job, channels[i], channels[i], wg, i)
-// 			// go job(channels[i], channels[i])
-// 			continue
-// 		}
-
-// 		go worker(job, channels[i-1], channels[i], wg, i)
-// 		// go job(channels[i-1], channels[i])
-// 		fmt.Println("jobs", i, job, len(jobs), channels)
-// 	}
-// 	wg.Wait()
-// }
 
 func SingleHash(in, out chan interface{}) {
 	for dataRaw := range in {
