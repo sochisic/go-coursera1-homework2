@@ -18,10 +18,13 @@ func main() {
 	out := make(chan interface{})
 	go SingleHash(in, out)
 	in <- 1
+	close(in)
 
+	fmt.Println("DataSignerCrc32", DataSignerCrc32(strconv.Itoa(0)))
 	for r := range out {
 		fmt.Println(r)
 	}
+
 	// res2 := MultiHash(res)
 	// fmt.Println(res2)
 	// res3 := CombineResult(res2)
@@ -138,15 +141,34 @@ func ExecutePipeline(jobs ...job) {
 
 func SingleHash(in, out chan interface{}) {
 	for dataRaw := range in {
-		data, ok := dataRaw.(string)
+		data, ok := dataRaw.(int)
 		if !ok {
-			errors.New("Not a string")
+			errors.New("Not a Int")
 		}
 
-		result := DataSignerCrc32(data) + "~" + DataSignerCrc32(DataSignerMd5(data))
+		ds1ch := DataSigner(strconv.Itoa(data))
+
+		ds2result := DataSignerCrc32(DataSignerMd5(strconv.Itoa(data)))
+		ds1result := <-ds1ch
+
+		result := ds1result + "~" + ds2result
+		fmt.Println("SingleHash", result)
 		out <- result
+		// close(out)
 	}
-	// return out
+	fmt.Println("SingleHash ended")
+	return
+}
+
+func DataSigner(data string) chan string {
+	fmt.Println("DataSigner", data)
+	resultCh := make(chan string, 1)
+	go func(ch chan string) {
+		d := DataSignerCrc32(data)
+		ch <- d
+	}(resultCh)
+	fmt.Println("DataSigner ended")
+	return resultCh
 }
 
 func MultiHash(in, out chan interface{}) {
@@ -181,7 +203,3 @@ func CombineResults(in, out chan interface{}) {
 		}
 	}
 }
-
-// func Crc32Worker(i int, result chan) {
-
-// }
