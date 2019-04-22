@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -124,12 +125,20 @@ func ExecutePipeline(jobs ...job) {
 					jobIn <- data
 					cnt++
 
+					fmt.Println("counter", cnt, counter)
+
+					if len(jobs) > 3 && cnt == 1 {
+						close(jobIn)
+						fmt.Println("Worker Last: Ended")
+						return
+					}
 					if cnt == counter {
 						close(jobIn)
 						fmt.Println("Worker Last: Ended")
 						return
 					}
 				}
+
 			}(chans[i].jobIn, chans[i].in, chans[i].out, &wg)
 
 			jb(chans[i].jobIn, chans[i].out)
@@ -152,11 +161,11 @@ func SingleHash(in, out chan interface{}) {
 		ds1result := <-ds1ch
 
 		result := ds1result + "~" + ds2result
-		fmt.Println("SingleHash", result)
+		// fmt.Println("SingleHash", result)
 		out <- result
 		// close(out)
 	}
-	fmt.Println("SingleHash ended")
+	// fmt.Println("SingleHash ended")
 	return
 }
 
@@ -187,19 +196,31 @@ func MultiHash(in, out chan interface{}) {
 }
 
 func CombineResults(in, out chan interface{}) {
+	var result string
+	dataSlice := make([]string, 0)
+
 	for dataRaw := range in {
 		data, ok := dataRaw.(string)
 		if !ok {
 			errors.New("Not a string")
 		}
+		fmt.Println("CombineResults1", data)
 
-		if len([]byte(finalResult)) == 0 {
-			finalResult = data
-			out <- data
-		} else {
-			var result string
-			result = finalResult + "_" + data
-			out <- result
-		}
+		dataSlice = append(dataSlice, data)
 	}
+
+	sort.Strings(dataSlice)
+
+	for i, v := range dataSlice {
+		if i == 0 {
+			result = v
+			continue
+		}
+		result = result + "_" + v
+	}
+
+	fmt.Println("CombineResults2 dataSlice len", len(dataSlice))
+	fmt.Println("CombineResults2", result)
+	out <- result
+	close(out)
 }
