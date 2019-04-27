@@ -162,36 +162,44 @@ func ExecutePipeline(jobs ...job) {
 }
 
 func SingleHash(in, out chan interface{}) {
+	quoteCh := make(chan struct{}, 1)
+	wg := &sync.WaitGroup{}
+
 	for dataRaw := range in {
 		data, ok := dataRaw.(int)
 		if !ok {
 			errors.New("Not a Int")
 		}
 
-		ds1ch := DataSigner(strconv.Itoa(data))
-		md5 := DataSignerMd5(strconv.Itoa(data))
+		wg.Add(1)
 
-		ds2result := DataSignerCrc32(md5)
-		ds1result := <-ds1ch
+		go func(quote chan struct{}, out chan interface{}) {
+			defer wg.Done()
 
-		result := ds1result + "~" + ds2result
-		// fmt.Println("SingleHash", result)
-		out <- result
-		// close(out)
+			ds1ch := DataSigner(strconv.Itoa(data))
+
+			quoteCh <- struct{}{}
+			md5 := DataSignerMd5(strconv.Itoa(data))
+			<-quoteCh
+
+			ds2result := DataSignerCrc32(md5)
+			ds1result := <-ds1ch
+
+			result := ds1result + "~" + ds2result
+
+			out <- result
+		}(quoteCh, out)
 	}
-	fmt.Println("SingleHash ended")
-	return
+	wg.Wait()
 }
 
 func DataSigner(data string) chan string {
-	// fmt.Println("DataSigner", data)
-	resultCh := make(chan string, 1)
+	ch := make(chan string, 1)
 	go func(ch chan string) {
 		d := DataSignerCrc32(data)
 		ch <- d
-	}(resultCh)
-	// fmt.Println("DataSigner ended")
-	return resultCh
+	}(ch)
+	return ch
 }
 
 func MultiHash(in, out chan interface{}) {
